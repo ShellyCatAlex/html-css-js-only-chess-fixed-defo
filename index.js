@@ -1,9 +1,9 @@
-import { initGameRender } from "./Render/main.js";
+import { initGameRender, flipBoardForBlack } from "./Render/main.js";
 import { GlobalEvent } from "./Events/global.js";
 import { globalState } from "./Data/state.js";
 import { showLobby, getGameCodeFromUrl, buildAppShell, showMultiplayerBadge } from "./Multiplayer/lobby.js";
 import { joinGame } from "./Multiplayer/session.js";
-import { initGameRender, flipBoardForBlack } from "./Render/main.js";
+
 
 async function boot() {
   const urlCode = getGameCodeFromUrl();
