@@ -53,7 +53,7 @@ ROOT_DIV.innerHTML = "";
 
   boardWrapper.appendChild(boardAndRanks);
   boardWrapper.appendChild(makeFileLabels());
-  getRootDiv.appendChild(boardWrapper);
+  getRootDiv().appendChild(boardWrapper);
 
   placePieces(data);
 }
