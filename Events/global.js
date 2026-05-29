@@ -1,4 +1,4 @@
-import { ROOT_DIV } from "../Helper/constants.js";
+import { getRootDiv } from "../Helper/constants.js";
 import { keySquareMapper } from "../Data/state.js";
 import {
   globalPiece,
@@ -35,7 +35,7 @@ function changeTurn() {
   inTurn = inTurn === "white" ? "black" : "white";
 }
 
-// ─── Legality helpers ─────────────────────────────────────────────────────────
+// ─── Legality helpers ───
 
 function isLegalAfterMove(piece, toId, color) {
   const fromId   = piece.current_position;
@@ -79,7 +79,7 @@ function isEnPassantLegal(pawn, epSquare, color) {
   return legal;
 }
 
-// ─── Highlight available moves ────────────────────────────────────────────────
+// ─── Highlight available moves ────
 
 function highlightLegalMoves(piece, color) {
   let moves;
@@ -108,7 +108,7 @@ function highlightLegalMoves(piece, color) {
   renderBoardHighlights();
 }
 
-// ─── Execute a move ───────────────────────────────────────────────────────────
+// ─── Execute a move ───
 
 function executeMove(piece, toId) {
   const fromId = piece.current_position;
@@ -118,7 +118,7 @@ function executeMove(piece, toId) {
 
   let newEnPassantTarget = null;
 
-  // En passant capture
+  // En passant
   if (piece.piece_name.includes("PAWN") && toId === enPassantTarget) {
     const capSq = getSquare(toId[0] + fromId[1]);
     if (capSq?.piece) {
@@ -128,7 +128,7 @@ function executeMove(piece, toId) {
     }
   }
 
-  // Double pawn push → set en passant target
+  // Double pawn push en passant
   if (piece.piece_name.includes("PAWN")) {
     const rf = parseInt(fromId[1]), rt = parseInt(toId[1]);
     if (Math.abs(rt - rf) === 2) {
@@ -136,7 +136,7 @@ function executeMove(piece, toId) {
     }
   }
 
-  // Castling → move rook too
+  // Castling move rook too
   if (piece.piece_name.includes("KING")) {
     const delta = toId.charCodeAt(0) - fromId.charCodeAt(0);
     if (Math.abs(delta) === 2) {
@@ -253,9 +253,9 @@ function handleSquareClick(squareId) {
 // ─── Event wiring ─────────────────────────────────────────────────────────────
 
 export function GlobalEvent() {
-  ROOT_DIV.addEventListener("click", (event) => {
+  getRootDiv().addEventListener("click", (event) => {
     let el = event.target;
-    while (el && el !== ROOT_DIV) {
+    while (el && el !== getRootDiv()) {
       if (el.classList?.contains("square")) {
         handleSquareClick(el.id);
         return;
