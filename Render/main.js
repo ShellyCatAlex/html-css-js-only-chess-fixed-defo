@@ -5,7 +5,8 @@ import { globalState } from "../Data/state.js";
 export const globalPiece = {};
 
 export function initGameRender(data) {
-  getRootDiv.innerHTML = "";
+  const ROOT_DIV = getRootDiv();
+ROOT_DIV.innerHTML = "";
 
   const boardWrapper = document.createElement("div");
   boardWrapper.id = "board-wrapper";
