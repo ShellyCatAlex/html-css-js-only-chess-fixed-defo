@@ -1,8 +1,8 @@
 import { initGameRender } from "./Render/main.js";
 import { GlobalEvent } from "./Events/global.js";
 import { globalState } from "./Data/state.js";
-import { showLobby, getGameCodeFromUrl, showMultiplayerBadge } from "./Multiplayer/lobby.js";
-import { joinGame, onOpponentMove, onGameStatus, myColor, gameId } from "./Multiplayer/session.js";
+import { showLobby, getGameCodeFromUrl, buildAppShell, showMultiplayerBadge } from "./Multiplayer/lobby.js";
+import { joinGame } from "./Multiplayer/session.js";
 
 async function boot() {
   const urlCode = getGameCodeFromUrl();
@@ -10,17 +10,14 @@ async function boot() {
   let playerColor = "white";
 
   if (urlCode) {
+    // challenge link — 
     try {
       await joinGame(urlCode);
       mode = "multiplayer";
       playerColor = "black";
-      document.getElementById("app").innerHTML = `
-        <h1 id="game-title">Chess</h1>
-        <div id="status-bar" class="status-bar">White's turn</div>
-        <div id="root"></div>
-        <button id="new-game-btn">New Game</button>
-      `;
+      buildAppShell(); // set up #root before initGameRender
     } catch {
+      // Invalid/expired link — fall through to lobby
       const result = await showLobby();
       mode = result.mode;
       playerColor = result.color;
@@ -44,3 +41,4 @@ async function boot() {
 }
 
 boot();
+
