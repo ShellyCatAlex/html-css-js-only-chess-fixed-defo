@@ -1,47 +1,36 @@
 import { getSupabaseClient } from "./supabase.js";
 
-// ─── Session state ───
-export let myColor     = null;   
-export let gameId      = null;   
+export let myColor     = null;
+export let gameId      = null;
 export let isMultiplayer = false;
 
-let _onMoveCallback   = null;    
-let _onStatusCallback = null;    
+let _onMoveCallback   = null;
+let _onStatusCallback = null;
 let _subscription     = null;
-
-// ─── Helpers ───
+let _opponentJoinedFired = false;
 
 function generateGameId() {
   return Math.random().toString(36).slice(2, 8).toUpperCase();
 }
-
-// Serialize the entire board into a compact move record
-export function serializeMove(fromId, toId, extraData = {}) {
-  return { from: fromId, to: toId, ...extraData };
-}
-
-// ─── Create a new game (host = white) ───
 
 export async function createGame() {
   const supabase = await getSupabaseClient();
   gameId = generateGameId();
   myColor = "white";
   isMultiplayer = true;
+  _opponentJoinedFired = false;
 
   const { error } = await supabase.from("games").insert({
     id: gameId,
-    status: "waiting",   // waiting | active | finished
+    status: "waiting",
     current_turn: "white",
     moves: [],
   });
 
   if (error) throw new Error("Failed to create game: " + error.message);
-
   await _subscribe();
   return gameId;
 }
-
-// ─── Join an existing game ───
 
 export async function joinGame(id) {
   const supabase = await getSupabaseClient();
@@ -49,7 +38,6 @@ export async function joinGame(id) {
   myColor = "black";
   isMultiplayer = true;
 
-  // Check game exists and is waiting
   const { data, error } = await supabase
     .from("games")
     .select("*")
@@ -60,29 +48,16 @@ export async function joinGame(id) {
   if (data.status === "finished") throw new Error("This game has already ended.");
   if (data.status === "active") throw new Error("This game already has two players.");
 
-  // Mark game as active
-  await supabase
-    .from("games")
-    .update({ status: "active" })
-    .eq("id", gameId);
-
+  await supabase.from("games").update({ status: "active" }).eq("id", gameId);
   await _subscribe();
   return data;
 }
 
-// ─── send move to Supabase ───
-
 export async function pushMove(moveData) {
   const supabase = await getSupabaseClient();
+  const nextTurn = moveData.color === "white" ? "black" : "white";
 
-  // Append move to the moves array and flip turn
-  const nextTurn = moveData.turn === "white" ? "black" : "white";
-
-  const { error } = await supabase.from("games").update({
-    moves: supabase.rpc ? undefined : undefined, 
-  }).eq("id", gameId);
-
-  // Use RPC to append to moves 
+  // Try RPC first, fall back to fetch-append-update
   const { error: rpcError } = await supabase.rpc("append_move", {
     game_id: gameId,
     move_data: moveData,
@@ -106,17 +81,10 @@ export async function pushMove(moveData) {
   }
 }
 
-// ─── Mark game finished ───
-
 export async function finishGame(result) {
   const supabase = await getSupabaseClient();
-  await supabase
-    .from("games")
-    .update({ status: "finished", result })
-    .eq("id", gameId);
+  await supabase.from("games").update({ status: "finished", result }).eq("id", gameId);
 }
-
-// ─── Real-time subscription ───
 
 async function _subscribe() {
   const supabase = await getSupabaseClient();
@@ -134,12 +102,17 @@ async function _subscribe() {
       (payload) => {
         const updated = payload.new;
 
-        // Opponent joins
-        if (updated.status === "active" && _onStatusCallback) {
+        // Opponent joined — only fire once
+        if (
+          updated.status === "active" &&
+          !_opponentJoinedFired &&
+          _onStatusCallback
+        ) {
+          _opponentJoinedFired = true;
           _onStatusCallback("opponent_joined", updated);
         }
 
-        // New move arrived — only process if it's not our own move
+        // New move from opponent
         if (updated.moves && updated.moves.length > 0) {
           const lastMove = updated.moves[updated.moves.length - 1];
           if (lastMove.color !== myColor && _onMoveCallback) {
@@ -147,7 +120,7 @@ async function _subscribe() {
           }
         }
 
-        // Game dione
+        // Game finished
         if (updated.status === "finished" && _onStatusCallback) {
           _onStatusCallback("game_finished", updated);
         }
@@ -156,8 +129,6 @@ async function _subscribe() {
     .subscribe();
 }
 
-// ─── Callback registration ───
-
 export function onOpponentMove(callback) {
   _onMoveCallback = callback;
 }
@@ -165,8 +136,6 @@ export function onOpponentMove(callback) {
 export function onGameStatus(callback) {
   _onStatusCallback = callback;
 }
-
-// ─── Clean ───
 
 export async function leaveGame() {
   if (_subscription) {
