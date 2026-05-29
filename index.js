@@ -29,8 +29,9 @@ async function boot() {
     playerColor = result.color;
   }
 
-  initGameRender(globalState);
-  GlobalEvent(mode === "multiplayer" ? playerColor : null);
+initGameRender(globalState);
+if (playerColor === "black") flipBoardForBlack();
+GlobalEvent(playerColor);
 
   if (mode === "multiplayer") {
     const session = await import("./Multiplayer/session.js");
