@@ -1,11 +1,11 @@
 import * as pieceFactory from "../Data/pieces.js";
-import { ROOT_DIV } from "../Helper/constants.js";
+import { getRootDiv } from "../Helper/constants.js";
 import { globalState } from "../Data/state.js";
 
 export const globalPiece = {};
 
 export function initGameRender(data) {
-  ROOT_DIV.innerHTML = "";
+  getRootDiv.innerHTML = "";
 
   const boardWrapper = document.createElement("div");
   boardWrapper.id = "board-wrapper";
@@ -52,7 +52,7 @@ export function initGameRender(data) {
 
   boardWrapper.appendChild(boardAndRanks);
   boardWrapper.appendChild(makeFileLabels());
-  ROOT_DIV.appendChild(boardWrapper);
+  getRootDiv.appendChild(boardWrapper);
 
   placePieces(data);
 }
