@@ -206,3 +206,28 @@ export function clearSquare(id) {
   const el = document.getElementById(id);
   if (el) el.innerHTML = "";
 }
+
+export function flipBoardForBlack() {
+  // Reverse the row order in the board
+  const board = document.getElementById("board");
+  if (!board) return;
+  const rows = Array.from(board.children);
+  rows.reverse().forEach(row => {
+    // Also reverse squares within each row
+    const squares = Array.from(row.children);
+    squares.reverse().forEach(sq => row.appendChild(sq));
+    board.appendChild(row);
+  });
+
+  // Flip rank labels (both sides)
+  document.querySelectorAll(".rank-labels").forEach(col => {
+    const labels = Array.from(col.children);
+    labels.reverse().forEach(l => col.appendChild(l));
+  });
+
+  // Flip file labels (both rows)
+  document.querySelectorAll(".file-labels").forEach(row => {
+    const labels = Array.from(row.children);
+    labels.reverse().forEach(l => row.appendChild(l));
+  });
+}
