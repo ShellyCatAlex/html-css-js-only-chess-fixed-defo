@@ -27,15 +27,14 @@ import {
 } from "../Helper/commonHelper.js";
 import pawnPromotion from "../Helper/modalCreator.js";
 
-let inTurn    = "white";
+let inTurn        = "white";
 let selectedPiece = null;
-let gameOver  = false;
+let gameOver      = false;
+let lockedColor   = null;
 
 function changeTurn() {
   inTurn = inTurn === "white" ? "black" : "white";
 }
-
-// ─── Legality helpers ───
 
 function isLegalAfterMove(piece, toId, color) {
   const fromId   = piece.current_position;
@@ -43,14 +42,11 @@ function isLegalAfterMove(piece, toId, color) {
   const toSq     = getSquare(toId);
   if (!fromSq || !toSq) return false;
   const captured = toSq.piece || null;
-
   fromSq.piece = null;
   toSq.piece   = piece;
   piece.current_position = toId;
   if (captured) captured.current_position = null;
-
   const legal  = !isKingInCheck(color, globalPiece);
-
   piece.current_position = fromId;
   fromSq.piece = piece;
   toSq.piece   = captured;
@@ -66,7 +62,6 @@ function isEnPassantLegal(pawn, epSquare, color) {
   if (!capSq) return false;
   const capPiece = capSq.piece;
   const prevPos  = pawn.current_position;
-
   fromSq.piece = null;
   toSq.piece   = pawn;
   pawn.current_position = epSquare;
@@ -78,8 +73,6 @@ function isEnPassantLegal(pawn, epSquare, color) {
   capSq.piece  = capPiece;
   return legal;
 }
-
-// ─── Highlight available moves ────
 
 function highlightLegalMoves(piece, color) {
   let moves;
@@ -93,7 +86,6 @@ function highlightLegalMoves(piece, color) {
   } else {
     moves = getLegalMoves(piece, color, globalPiece);
   }
-
   moves.forEach(sq => {
     const square = keySquareMapper[sq];
     if (!square) return;
@@ -104,13 +96,10 @@ function highlightLegalMoves(piece, color) {
       square.highlight = true;
     }
   });
-
   renderBoardHighlights();
 }
 
-// ─── Execute a move ───
-
-function executeMove(piece, toId) {
+function executeMove(piece, toId, { broadcast = true } = {}) {
   const fromId = piece.current_position;
   const fromSq = getSquare(fromId);
   const toSq   = getSquare(toId);
@@ -118,7 +107,6 @@ function executeMove(piece, toId) {
 
   let newEnPassantTarget = null;
 
-  // En passant
   if (piece.piece_name.includes("PAWN") && toId === enPassantTarget) {
     const capSq = getSquare(toId[0] + fromId[1]);
     if (capSq?.piece) {
@@ -128,7 +116,6 @@ function executeMove(piece, toId) {
     }
   }
 
-  // Double pawn push en passant
   if (piece.piece_name.includes("PAWN")) {
     const rf = parseInt(fromId[1]), rt = parseInt(toId[1]);
     if (Math.abs(rt - rf) === 2) {
@@ -136,16 +123,15 @@ function executeMove(piece, toId) {
     }
   }
 
-  // Castling move rook too
   if (piece.piece_name.includes("KING")) {
     const delta = toId.charCodeAt(0) - fromId.charCodeAt(0);
     if (Math.abs(delta) === 2) {
-      const rank      = fromId[1];
-      const kingside  = delta > 0;
-      const rfrom     = (kingside ? "h" : "a") + rank;
-      const rto       = (kingside ? "f" : "d") + rank;
-      const rFromSq   = getSquare(rfrom);
-      const rToSq     = getSquare(rto);
+      const rank     = fromId[1];
+      const kingside = delta > 0;
+      const rfrom    = (kingside ? "h" : "a") + rank;
+      const rto      = (kingside ? "f" : "d") + rank;
+      const rFromSq  = getSquare(rfrom);
+      const rToSq    = getSquare(rto);
       if (rFromSq?.piece && rToSq) {
         const rook = rFromSq.piece;
         rToSq.piece = rook;
@@ -169,25 +155,46 @@ function executeMove(piece, toId) {
   renderPieceMove(fromId, toId);
   setEnPassantTarget(newEnPassantTarget);
 
-  // Pawn promotion
   if (piece.piece_name.includes("PAWN")) {
     const promRank = piece.piece_name.includes("WHITE") ? "8" : "1";
     if (toId[1] === promRank) {
-      pawnPromotion(inTurn, promotionCallback, toId);
-      return; // finishTurn called after piece is chosen
+      pawnPromotion(inTurn, (factory, id) => promotionCallback(factory, id, broadcast), toId);
+      return;
     }
+  }
+
+  if (broadcast && lockedColor) {
+    broadcastMove(fromId, toId, piece.piece_name, newEnPassantTarget);
   }
 
   finishTurn();
 }
 
-function promotionCallback(factory, id) {
+async function broadcastMove(fromId, toId, pieceName, epTarget) {
+  try {
+    const session = await import("../Multiplayer/session.js");
+    await session.pushMove({
+      from: fromId,
+      to: toId,
+      piece: pieceName,
+      color: lockedColor,
+      enPassantTarget: epTarget || null,
+    });
+  } catch (err) {
+    console.error("Failed to sync move:", err);
+  }
+}
+
+function promotionCallback(factory, id, broadcast) {
   const sq = getSquare(id);
   if (!sq) return;
   const newPiece = factory(id);
   sq.piece = newPiece;
   globalPiece[`promoted_${id}_${Date.now()}`] = newPiece;
   renderPieceAt(newPiece, id);
+  if (broadcast && lockedColor) {
+    broadcastMove(id, id, newPiece.piece_name, null);
+  }
   finishTurn();
 }
 
@@ -198,19 +205,35 @@ function finishTurn() {
   if (noMoves) {
     gameOver = true;
     updateStatus(inTurn, inCheck ? "checkmate" : "stalemate");
+    if (lockedColor) {
+      import("../Multiplayer/session.js").then(s =>
+        s.finishGame(inCheck ? "checkmate" : "stalemate")
+      );
+    }
     return;
   }
   updateStatus(inTurn, inCheck ? "check" : null);
+  if (lockedColor && inTurn !== lockedColor) {
+    const bar = document.getElementById("status-bar");
+    if (bar && !inCheck) bar.textContent = "Waiting for opponent...";
+  }
 }
 
-// ─── Click handler ────────────────────────────────────────────────────────────
+function applyOpponentMove(move) {
+  if (gameOver) return;
+  const fromSq = getSquare(move.from);
+  if (!fromSq?.piece) return;
+  const piece = fromSq.piece;
+  if (move.enPassantTarget) setEnPassantTarget(move.enPassantTarget);
+  executeMove(piece, move.to, { broadcast: false });
+}
 
 function handleSquareClick(squareId) {
   if (gameOver) return;
+  if (lockedColor && inTurn !== lockedColor) return;
   const square = keySquareMapper[squareId];
   if (!square) return;
 
-  // Destination click (move or capture)
   if ((square.highlight || square.captureHighlight) && selectedPiece) {
     clearSelfHighlight(selectedPiece);
     clearAllHighlights();
@@ -219,30 +242,25 @@ function handleSquareClick(squareId) {
     return;
   }
 
-  // Own piece click
   if (square.piece) {
     const pieceColor = square.piece.piece_name.includes("WHITE") ? "white" : "black";
     if (pieceColor !== inTurn) return;
-
     if (selectedPiece === square.piece) {
       clearSelfHighlight(selectedPiece);
       clearAllHighlights();
       selectedPiece = null;
       return;
     }
-
     if (selectedPiece) {
       clearSelfHighlight(selectedPiece);
       clearAllHighlights();
     }
-
     selectedPiece = square.piece;
     selfHighlight(selectedPiece);
     highlightLegalMoves(selectedPiece, inTurn);
     return;
   }
 
-  // Empty square — deselect
   if (selectedPiece) {
     clearSelfHighlight(selectedPiece);
     clearAllHighlights();
@@ -250,12 +268,13 @@ function handleSquareClick(squareId) {
   }
 }
 
-// ─── Event wiring ─────────────────────────────────────────────────────────────
+export function GlobalEvent(playerColor = null) {
+  lockedColor = playerColor;
 
-export function GlobalEvent() {
-  getRootDiv().addEventListener("click", (event) => {
+  const rootDiv = getRootDiv();
+  rootDiv.addEventListener("click", (event) => {
     let el = event.target;
-    while (el && el !== getRootDiv()) {
+    while (el && el !== rootDiv) {
       if (el.classList?.contains("square")) {
         handleSquareClick(el.id);
         return;
@@ -266,5 +285,9 @@ export function GlobalEvent() {
 
   document.getElementById("new-game-btn")?.addEventListener("click", () => {
     window.location.reload();
+  });
+
+  document.addEventListener("opponent-move", (e) => {
+    applyOpponentMove(e.detail);
   });
 }
